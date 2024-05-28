@@ -1,11 +1,11 @@
-# spec file for package huk_driver
+# spec file for package virtCCA_driver
 #
 # Copyright (c) Huawei Technologies Co., Ltd. 2024. All rights reserved.
 #
 %global debug_package %{nil}
-%define kmod_name huk_derive
+%define kmod_name virtCCA_driver
 Name         :  %{kmod_name}-kmod
-Summary      :  %{kmod_name}.ko
+Summary      :  All drivers for virtCCA
 Version      :  1.0
 Release      :  0.1
 License      :  GPLV2
@@ -15,8 +15,9 @@ BuildRoot    :  %{_tmppath}/%{kmod_name}-%{version}-build
 BuildRequires:  dos2unix
 Requires     :  rpm coreutils
 
-%define module_dir 5.10.0-virtcca/tmm
-%define module_ko       %{kmod_name}.ko
+%define module_dir 5.10.0-virtcca
+%define tmm_ko       tmm_driver.ko
+%define huk_ko       huk_derive.ko
 
 %description
 %{name} module
@@ -25,22 +26,25 @@ Requires     :  rpm coreutils
 %setup -q -n%{kmod_name}
 
 %build
-cd %_builddir/%{kmod_name}/src
+cd %_builddir/%{kmod_name}
 make
 
 %install
 mkdir -p %{buildroot}/lib/modules/%{module_dir}
-install -m 0640 %_builddir/%{kmod_name}/src/%{module_ko}        %{buildroot}/lib/modules/%{module_dir}
+install -m 0640 %_builddir/%{kmod_name}/tmm_driver/src/%{tmm_ko}        %{buildroot}/lib/modules/%{module_dir}
+install -m 0640 %_builddir/%{kmod_name}/huk_derive/src/%{huk_ko}        %{buildroot}/lib/modules/%{module_dir}
 
 %clean
 rm -rf %{buildroot}
 
 %files
 %defattr(-,root,root)
-%attr(0640,root,root) /lib/modules/%{module_dir}/%{module_ko}
+%attr(0640,root,root) /lib/modules/%{module_dir}/%{tmm_ko}
+%attr(0640,root,root) /lib/modules/%{module_dir}/%{huk_ko}
 
 %post
-insmod /lib/modules/%{module_dir}/%{module_ko}
+insmod /lib/modules/%{module_dir}/%{tmm_ko}
+insmod /lib/modules/%{module_dir}/%{huk_ko}
 
 %postun
 rmmod %{module_ko}

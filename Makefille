@@ -1,0 +1,13 @@
+.PHONY: clean tmm huk
+
+all: tmm huk
+
+tmm:
+    make -C tmm_driver/src
+
+huk:
+    make -C huk_derive/src
+
+clean:
+    make clean -C tmm_driver/src
+    make clean -C huk_derive/src
