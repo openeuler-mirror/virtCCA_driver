@@ -1,8 +1,8 @@
 obj-m += tmm_driver.o
 # Otherwise we were called directly from the command
 # line; invoke the kernel build system.
-KERNEL_DIR=/usr/src/kernels/$(shell uname -r)
-PWD:=$(shell pwd)
+KERNEL_DIR ?= /usr/src/kernels/$(shell uname -r)
+PWD := $(shell pwd)
 
 modules:
 	$(MAKE) -C $(KERNEL_DIR) M=$(PWD) modules

@@ -1,9 +1,11 @@
 .PHONY: clean tmm seal
 
+KERNEL_DIR ?= /usr/src/kernels/$(shell uname -r)
+
 all: tmm seal
 
 tmm:
-	make -C tmm_driver/src
+	make KERNEL_DIR=$(KERNEL_DIR) -C tmm_driver/src
 
 seal:
 	make -C sealing_key/src

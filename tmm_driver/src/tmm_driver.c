@@ -9,8 +9,9 @@
 
 #include <linux/module.h>
 #include <linux/slab.h>
+#include <linux/kprobes.h>
+#include <linux/kallsyms.h>
 #include <asm/page.h>
-#include <asm/kvm_tmi.h>
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("HUAWEI TECHNOLOGIES CO., LTD.");
@@ -57,9 +58,49 @@ static const char *meta_data_strs[] = {
     "ttt"
 };
 
+typedef unsigned long (*kallsyms_lookup_name_t)(const char *name);
+static kallsyms_lookup_name_t fn_kallsyms_lookup_name = NULL;
+
+typedef uint64_t (*tmi_mem_info_show_t)(uint64_t addr);
+static tmi_mem_info_show_t tmi_mem_info_show_func = NULL;
+
+static struct kprobe kp_sym_lookup = {
+    .symbol_name = "kallsyms_lookup_name",
+};
+
+static void get_kallsyms_lookup_name(void)
+{
+    int ret;
+
+    ret = register_kprobe(&kp_sym_lookup);
+    if (ret < 0) {
+        pr_err("tmm_driver: register_kprobe failed, returned %d\n", ret);
+    }
+
+    fn_kallsyms_lookup_name = (void *)kp_sym_lookup.addr;
+    unregister_kprobe(&kp_sym_lookup);
+}
+
+static int get_symbol_from_kernel(void)
+{
+    get_kallsyms_lookup_name();
+    if (!fn_kallsyms_lookup_name) {
+        pr_err("tmm_driver: cannot get function kallsyms_lookup_name\n");
+	return -1;
+    }
+
+    tmi_mem_info_show_func = (tmi_mem_info_show_t)fn_kallsyms_lookup_name("tmi_mem_info_show");
+    if (!tmi_mem_info_show_func) {
+	pr_err("tmm_driver: cannot get function tmi_mem_info_show\n");
+    	return -1;
+    }
+
+    return 0;
+}
+
 static int get_tmm_memory_info(tmm_memory_info_s *memory_info)
 {
-    return tmi_mem_info_show((uint64_t)(memory_info));
+    return tmi_mem_info_show_func((uint64_t)memory_info);
 }
 
 static uint64_t cal_numa_node_mem_info(tmm_memory_info_s *memory_info,
@@ -343,22 +384,34 @@ static int __init tmm_driver_init(void)
     rc = sysfs_create_file(tmm_kobj, &memory_info_attr.attr);
     if (rc) {
         pr_err("tmm_driver: unable to create memory_info sysfs file (%d)\n", rc);
-        return rc;
+        goto err;
     }
 
     rc = sysfs_create_file(tmm_kobj, &slab_info_attr.attr);
     if (rc) {
         pr_err("tmm_driver: unable to create slab_info sysfs file (%d)\n", rc);
-        return rc;
+        goto err;
     }
 
     rc = sysfs_create_file(tmm_kobj, &buddy_info_attr.attr);
     if (rc) {
         pr_err("tmm_driver: unable to create buddy_info sysfs file (%d)\n", rc);
-        return rc;
+        goto err;
     }
 
+    rc = get_symbol_from_kernel();
+    if (rc)
+        goto err;
+
     return 0;
+
+err:
+    sysfs_remove_file(tmm_kobj, &memory_info_attr.attr);
+    sysfs_remove_file(tmm_kobj, &slab_info_attr.attr);
+    sysfs_remove_file(tmm_kobj, &buddy_info_attr.attr);
+    kobject_put(tmm_kobj);
+
+    return rc;
 }
 
 static void __exit tmm_driver_exit(void)
