@@ -6,6 +6,7 @@
  * This driver provide huk derive key.
  */
 
+#include <linux/version.h>
 #include <linux/slab.h>
 #include <linux/init.h>
 #include <linux/module.h>
@@ -129,7 +130,11 @@ static int __init seal_init(void)
     int ret;
     struct device *class_dev = NULL;
 
+#if (KERNEL_VERSION(6, 4, 0) <= LINUX_VERSION_CODE)
+    g_driver_class = class_create(SEALING_KEY_DEV);
+#else
     g_driver_class = class_create(THIS_MODULE, SEALING_KEY_DEV);
+#endif
     if (IS_ERR_OR_NULL(g_driver_class)) {
         ERR("class create failed");
         return -ENOMEM;
