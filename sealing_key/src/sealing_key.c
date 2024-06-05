@@ -67,6 +67,11 @@ static int cmd_get_sealing_key(void __user *argp)
         return ret;
     }
 
+    if (seal_params.salt_len != 0 && seal_params.salt_len != SEALING_SALT_LEN) {
+        ERR("invalid salt len %d", seal_params.salt_len);
+        return -EINVAL;
+    }
+
     if (seal_params.salt_len != 0) {
         salt = kzalloc(seal_params.salt_len, GFP_KERNEL);
         if (!salt) {
