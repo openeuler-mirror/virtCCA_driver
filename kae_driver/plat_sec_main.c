@@ -9,6 +9,11 @@
 
 #define SEC_SQE_SIZE			128
 
+struct plat_sec {
+	struct hisi_plat_qm qm;
+};
+
+
 static int sec_qm_init(struct hisi_plat_qm *qm, struct platform_device *pdev)
 {
 	qm->pdev = pdev;
@@ -27,7 +32,7 @@ static int sec_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct hisi_plat_qm *qm;
-	struct sec_dev *sec;
+	struct plat_sec *sec;
 	int ret;
 
 	dev_info(dev, "SEC init ...\n");

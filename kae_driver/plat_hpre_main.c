@@ -9,7 +9,10 @@
 #include <linux/module.h>
 
 #include "plat_qm.h"
-#include "plat_hpre_main.h"
+
+struct plat_hpre {
+	struct hisi_plat_qm qm;
+};
 
 #define HPRE_SQE_SIZE		64
 

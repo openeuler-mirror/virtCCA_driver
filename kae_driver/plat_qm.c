@@ -9,7 +9,6 @@
 #include <linux/io.h>
 #include <linux/uacce.h>
 #include <uapi/misc/uacce/hisi_qm.h>
-#include "qm_common.h"
 #include "plat_qm.h"
 
 /* mailbox */
