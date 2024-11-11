@@ -5,7 +5,7 @@
  * Kunpeng hardware accelerator sec module init.
  */
 
-#include "plat_sec.h"
+#include "plat_qm.h"
 
 #define SEC_SQE_SIZE			128
 
