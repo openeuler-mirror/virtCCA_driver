@@ -84,8 +84,6 @@ struct qm_mailbox {
 
 struct qm_hw_ops {
 	int (*get_vft)(struct hisi_plat_qm *qm, u32 *base, u32 *number);
-	void (*qm_db)(struct hisi_plat_qm *qm, u16 qn,
-		      u8 cmd, u16 index, u8 priority);
 };
 
 static void qm_mb_pre_init(struct qm_mailbox *mailbox, u8 cmd,
@@ -323,28 +321,8 @@ static int qm_get_vft(struct hisi_plat_qm *qm, u32 *base, u32 *number)
 	return 0;
 }
 
-static void qm_db(struct hisi_plat_qm *qm, u16 qn, u8 cmd, u16 index, u8 priority)
-{
-	void __iomem *io_base = qm->io_base;
-	u16 randata = 0;
-	u64 doorbell;
-
-	if (cmd == QM_DOORBELL_CMD_SQ || cmd == QM_DOORBELL_CMD_CQ)
-		io_base = qm->io_base + QM_DOORBELL_SQ_CQ_BASE_V2;
-	else
-		io_base += QM_DOORBELL_EQ_AEQ_BASE_V2;
-
-	doorbell = qn | ((u64)cmd << QM_DB_CMD_SHIFT_V2) |
-		   ((u64)randata << QM_DB_RAND_SHIFT_V2) |
-		   ((u64)index << QM_DB_INDEX_SHIFT_V2) |
-		   ((u64)priority << QM_DB_PRIORITY_SHIFT_V2);
-
-	writeq(doorbell, io_base);
-}
-
 static const struct qm_hw_ops qm_hw_ops = {
 	.get_vft = qm_get_vft,
-	.qm_db = qm_db,
 };
 
 static int qm_get_qp_num(struct hisi_plat_qm *qm)
@@ -402,8 +380,10 @@ static int qm_pre_init(struct hisi_plat_qm *qm)
 	qm->use_uacce = true;
 
 	ret = qm_get_res(qm);
-	if (ret)
+	if (ret) {
+		mutex_destroy(&qm->mailbox_lock);
 		return ret;
+	}
 
 	ret = dma_set_mask_and_coherent(dev, DMA_BIT_MASK(64));
 	if (ret < 0) {
@@ -415,6 +395,7 @@ static int qm_pre_init(struct hisi_plat_qm *qm)
 
 err_set_mask_and_coherent:
 	qm_put_res(qm);
+	mutex_destroy(&qm->mailbox_lock);
 	return ret;
 }
 
@@ -932,6 +913,9 @@ static long qm_uacce_ioctl(struct uacce_queue *q, unsigned int cmd,
 	struct hisi_qp_info qp_info;
 	struct hisi_qp_ctx qp_ctx;
 
+	if (!access_ok((void __user *)arg, sizef(struct hisi_qp_ctx)))
+		return -EINVAL;
+
 	if (cmd == UACCE_CMD_QM_SET_QP_CTX) {
 		if (copy_from_user(&qp_ctx, (void __user *)arg,
 				   sizeof(struct hisi_qp_ctx)))
@@ -943,7 +927,7 @@ static long qm_uacce_ioctl(struct uacce_queue *q, unsigned int cmd,
 		qm_set_sqctype(q, qp_ctx.qc_type);
 		qp_ctx.id = qp->qp_id;
 
-		if (copy_to_user((void __user *)(uintptr_t)arg, &qp_ctx,
+		if (copy_to_user((void __user *)arg, &qp_ctx,
 				 sizeof(struct hisi_qp_ctx)))
 			return -EFAULT;
 
@@ -1087,8 +1071,10 @@ static void qm_remove_uacce(struct hisi_plat_qm *qm)
  */
 int platform_init_qm(struct hisi_plat_qm *qm)
 {
-	struct device *dev = &qm->pdev->dev;
 	int ret;
+
+	if (!qm)
+		return -EINVAL;
 
 	ret = qm_pre_init(qm);
 	if (ret)
@@ -1096,7 +1082,7 @@ int platform_init_qm(struct hisi_plat_qm *qm)
 
 	ret = qm_alloc_uacce(qm);
 	if (ret < 0) {
-		dev_err(dev, "fail to alloc uacce (%d)\n", ret);
+		dev_err(&qm->pdev->dev, "fail to alloc uacce (%d)\n", ret);
 		goto err_pre_init;
 	}
 
@@ -1111,6 +1097,7 @@ err_alloc_uacce:
 
 err_pre_init:
 	qm_put_res(qm);
+	mutex_destroy(&qm->mailbox_lock);
 
 	return ret;
 }
@@ -1191,7 +1178,7 @@ int platform_start_qm(struct hisi_plat_qm *qm)
 
 	down_write(&qm->qps_lock);
 
-	dev_info(dev, "qm start with %d queue pairs\n", qm->qp_num);
+	dev_info(dev, "qm start with %lu queue pairs\n", qm->qp_num);
 
 	if (!qm->qp_num) {
 		dev_err(dev, "qp_num should not be 0\n");
@@ -1248,10 +1235,9 @@ int platform_stop_qm(struct hisi_plat_qm *qm, enum qm_stop_reason r)
 
 	/* stop all the request sending at first. */
 	atomic_set(&qm->status.flags, QM_STOP);
-	qm->status.stop_reason = r;
 
 	qm_clear_queues(qm);
-	qm->status.stop_reason = QM_NORMAL;
+	qm->status.stop_reason = r;
 
 err_unlock:
 	up_write(&qm->qps_lock);
@@ -1305,6 +1291,9 @@ EXPORT_SYMBOL_GPL(platform_uninit_qm);
 
 int platform_register_uacce(struct hisi_plat_qm *qm)
 {
+	if (!qm)
+		return -EINVAL;
+
 	if (!qm->uacce)
 		return 0;
 
