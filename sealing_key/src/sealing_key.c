@@ -17,14 +17,18 @@
 #include <linux/arm-smccc.h>
 
 #define SEALING_KEY_LEN 32
-#define SEALING_SALT_LEN 64
+#define SEALING_PARAM_LEN 64
 
 struct sealing_key_params {
     uint32_t alg;
-    uint8_t salt[SEALING_SALT_LEN];
-    uint32_t salt_len;
+    uint8_t user_param[SEALING_PARAM_LEN];
+    uint32_t user_param_len;
     uint8_t sealing_key[SEALING_KEY_LEN];
 };
+
+typedef enum {
+    SEALING_HMAC_SHA256
+} SEALING_KEY_ALG;
 
 #define SEALING_KEY_DEV "sealingkey"
 #define SEAL_KEY_IOC_MAGIC 'd'
@@ -41,19 +45,53 @@ static struct class *g_driver_class;
 static dev_t g_devno;
 static struct cdev g_cdev;
 
-static int smc_sealing_key(uint32_t alg, void *salt, uint32_t salt_len, void *key_buf)
+static int smc_sealing_key(uint32_t alg, uint8_t *user_param, uint32_t user_param_len, uint8_t *key_buf)
 {
     struct arm_smccc_res res = {0};
-    arm_smccc_1_1_smc(SMC_TSI_HUK_DERIVE_KEY, alg, virt_to_phys(salt), salt_len, virt_to_phys(key_buf), &res);
+    arm_smccc_1_1_smc(SMC_TSI_HUK_DERIVE_KEY, alg, virt_to_phys(user_param), user_param_len,
+                      virt_to_phys(key_buf), &res);
 
     return res.a0;
+}
+
+static int check_malloc_params(struct sealing_key_params *seal_params, uint8_t **user_param, uint8_t **sealing_key)
+{
+    if (seal_params->alg != SEALING_HMAC_SHA256) {
+        ERR("not support alg %d\n", seal_params->alg);
+        return -EINVAL;
+    }
+    if (seal_params->user_param_len != 0 && seal_params->user_param_len != SEALING_PARAM_LEN) {
+        ERR("invalid user_param len %d", seal_params->user_param_len);
+        return -EINVAL;
+    }
+
+    *sealing_key = kzalloc(SEALING_KEY_LEN, GFP_KERNEL);
+    if (*sealing_key == NULL) {
+        ERR("malloc memory failed");
+        return -ENOMEM;
+    }
+
+    if (seal_params->user_param_len != 0) {
+        *user_param = kzalloc(seal_params->user_param_len, GFP_KERNEL);
+        if (*user_param == NULL) {
+            ERR("malloc memory failed");
+            goto err;
+        }
+        (void)memcpy(*user_param, seal_params->user_param, seal_params->user_param_len);
+    }
+    return 0;
+
+err:
+    kfree(*sealing_key);
+    *sealing_key = NULL;
+    return -ENOMEM;
 }
 
 static int cmd_get_sealing_key(void __user *argp)
 {
     struct sealing_key_params seal_params = {0};
     int ret = 0;
-    uint8_t *salt = NULL;
+    uint8_t *user_param = NULL;
     uint8_t *sealing_key = NULL;
 
     if (!argp) {
@@ -67,44 +105,32 @@ static int cmd_get_sealing_key(void __user *argp)
         return ret;
     }
 
-    if (seal_params.salt_len != 0 && seal_params.salt_len != SEALING_SALT_LEN) {
-        ERR("invalid salt len %d", seal_params.salt_len);
-        return -EINVAL;
+    ret = check_malloc_params(&seal_params, &user_param, &sealing_key);
+    if (ret) {
+        return ret;
     }
-
-    if (seal_params.salt_len != 0) {
-        salt = kzalloc(seal_params.salt_len, GFP_KERNEL);
-        if (!salt) {
-            ERR("malloc memory failed");
-            return -ENOMEM;
-        }
-        (void)memcpy(salt, seal_params.salt, seal_params.salt_len);
-    }
-
-    sealing_key = kzalloc(SEALING_KEY_LEN, GFP_KERNEL);
-    if (!sealing_key) {
-        ERR("malloc memory failed");
-        ret = -ENOMEM;
-        goto free_umem;
-    }
-
-    ret = smc_sealing_key(seal_params.alg, salt, seal_params.salt_len, sealing_key);
+ 
+    ret = smc_sealing_key(seal_params.alg, user_param, seal_params.user_param_len, sealing_key);
     if (ret != SMCCC_RET_SUCCESS) {
         ERR("got sealing key by smc failed, ret: %d\n", ret);
         goto free_kmem;
     }
 
-    (void)memset(seal_params.sealing_key, 0, SEALING_KEY_LEN);
     (void)memcpy(seal_params.sealing_key, sealing_key, SEALING_KEY_LEN);
+    (void)memset(sealing_key, 0, SEALING_KEY_LEN);
     ret = copy_to_user(argp, &seal_params, sizeof(struct sealing_key_params));
     if (ret) {
         ERR("copy result failed");
+    } else {
+        INFO("sealing key success");
     }
+    (void)memset(&seal_params, 0, sizeof(seal_params));
 
 free_kmem:
     kfree(sealing_key);
-free_umem:
-    kfree(salt);
+    if (user_param) {
+        kfree(user_param);
+    }
     return ret;
 }
 
