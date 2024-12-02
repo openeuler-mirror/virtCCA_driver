@@ -913,7 +913,7 @@ static long qm_uacce_ioctl(struct uacce_queue *q, unsigned int cmd,
 	struct hisi_qp_info qp_info;
 	struct hisi_qp_ctx qp_ctx;
 
-	if (!access_ok((void __user *)arg, sizef(struct hisi_qp_ctx)))
+	if (!access_ok((void __user *)arg, sizeof(struct hisi_qp_ctx)))
 		return -EINVAL;
 
 	if (cmd == UACCE_CMD_QM_SET_QP_CTX) {
@@ -1178,7 +1178,7 @@ int platform_start_qm(struct hisi_plat_qm *qm)
 
 	down_write(&qm->qps_lock);
 
-	dev_info(dev, "qm start with %lu queue pairs\n", qm->qp_num);
+	dev_info(dev, "qm start with %u queue pairs\n", qm->qp_num);
 
 	if (!qm->qp_num) {
 		dev_err(dev, "qp_num should not be 0\n");
