@@ -57,11 +57,11 @@ static int smc_sealing_key(uint32_t alg, uint8_t *user_param, uint32_t user_para
 static int check_malloc_params(struct sealing_key_params *seal_params, uint8_t **user_param, uint8_t **sealing_key)
 {
     if (seal_params->alg != SEALING_HMAC_SHA256) {
-        ERR("not support alg %d\n", seal_params->alg);
+        ERR("not support alg %u\n", seal_params->alg);
         return -EINVAL;
     }
     if (seal_params->user_param_len != 0 && seal_params->user_param_len != SEALING_PARAM_LEN) {
-        ERR("invalid user_param len %d", seal_params->user_param_len);
+        ERR("invalid user_param len %u", seal_params->user_param_len);
         return -EINVAL;
     }
 
@@ -144,7 +144,7 @@ static long seal_device_ioctl(struct file *fp, unsigned int cmd, unsigned long a
         ret = cmd_get_sealing_key(argp);
         break;
     default:
-        ERR("invalid command %d", cmd);
+        ERR("invalid command %u", cmd);
         ret = -ENOTTY;
     }
 
@@ -214,4 +214,7 @@ static void __exit seal_exit(void)
 
 module_init(seal_init);
 module_exit(seal_exit);
+
 MODULE_LICENSE("GPL");
+MODULE_AUTHOR("Chenzheng <chenzheng71@huawei.com>");
+MODULE_DESCRIPTION("Get sealing key from tmm module");

@@ -14,7 +14,7 @@
 #include <asm/page.h>
 
 MODULE_LICENSE("GPL");
-MODULE_AUTHOR("HUAWEI TECHNOLOGIES CO., LTD.");
+MODULE_AUTHOR("Chenzheng <chenzheng71@huawei.com>");
 MODULE_DESCRIPTION("Get tmm base memory info module");
 
 #define TMM_MAX_NODE_NUM 8
@@ -380,6 +380,10 @@ static int __init tmm_driver_init(void)
     int rc;
 
     tmm_kobj = kobject_create_and_add("tmm", kernel_kobj);
+    if (tmm_kobj == NULL) {
+        pr_err("tmm_driver: create tmm kobject failed\n");
+        return -1;
+    }
 
     rc = sysfs_create_file(tmm_kobj, &memory_info_attr.attr);
     if (rc) {
