@@ -83,12 +83,18 @@ static struct of_device_id hisi_hpre_dt_ids[] = {
 	{ },
 };
 
+static struct acpi_device_id hisi_hpre_acpi_match[] = {
+    {"HPRE07", 0},
+    { },
+};
+
 static struct platform_driver hpre_driver = {
 	.probe = hpre_probe,
 	.remove = hpre_remove,
 	.driver = {
 		.name = "hisi_plat_hpre",
 		.of_match_table = hisi_hpre_dt_ids,
+		.acpi_match_table = hisi_hpre_acpi_match,
 	}
 };
 
