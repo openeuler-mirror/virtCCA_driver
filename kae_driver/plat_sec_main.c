@@ -86,12 +86,18 @@ static struct of_device_id hisi_sec_dt_ids[] = {
         { /* sentinel */ },
 };
 
+static struct acpi_device_id hisi_sec_acpi_match[] = {
+    {"SEC07", 0},
+    { },
+};
+
 static struct platform_driver sec_driver = {
 	.probe = sec_probe,
 	.remove = sec_remove,
 	.driver = {
 		.name = "hisi_plat_sec",
 		.of_match_table = hisi_sec_dt_ids,
+		.acpi_match_table = hisi_sec_acpi_match,
 	}
 };
 
