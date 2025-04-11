@@ -375,9 +375,16 @@ static struct kobj_attribute slab_info_attr = __ATTR_RO(slab_info);
 static struct kobj_attribute buddy_info_attr = __ATTR_RO(buddy_info);
 static struct kobject *tmm_kobj;
 
+static struct attribute *tmm_attrs[] = {
+    &memory_info_attr.attr,
+    &slab_info_attr.attr,
+    &buddy_info_attr.attr,
+    NULL,
+};
+
 static int __init tmm_driver_init(void)
 {
-    int rc;
+    int rc, i;
 
     tmm_kobj = kobject_create_and_add("tmm", kernel_kobj);
     if (tmm_kobj == NULL) {
@@ -385,22 +392,12 @@ static int __init tmm_driver_init(void)
         return -1;
     }
 
-    rc = sysfs_create_file(tmm_kobj, &memory_info_attr.attr);
-    if (rc) {
-        pr_err("tmm_driver: unable to create memory_info sysfs file (%d)\n", rc);
-        goto err;
-    }
-
-    rc = sysfs_create_file(tmm_kobj, &slab_info_attr.attr);
-    if (rc) {
-        pr_err("tmm_driver: unable to create slab_info sysfs file (%d)\n", rc);
-        goto err;
-    }
-
-    rc = sysfs_create_file(tmm_kobj, &buddy_info_attr.attr);
-    if (rc) {
-        pr_err("tmm_driver: unable to create buddy_info sysfs file (%d)\n", rc);
-        goto err;
+    for (i = 0; tmm_attrs[i] != NULL; i++) {
+        rc = sysfs_create_file(tmm_kobj, tmm_attrs[i]);
+        if (rc) {
+            pr_err("tmm_driver: unable to create sysfs file (%d)\n", rc);
+            goto err;
+        }
     }
 
     rc = get_symbol_from_kernel();
@@ -410,9 +407,10 @@ static int __init tmm_driver_init(void)
     return 0;
 
 err:
-    sysfs_remove_file(tmm_kobj, &memory_info_attr.attr);
-    sysfs_remove_file(tmm_kobj, &slab_info_attr.attr);
-    sysfs_remove_file(tmm_kobj, &buddy_info_attr.attr);
+    for (--i; i >= 0; i--) {
+        sysfs_remove_file(tmm_kobj, tmm_attrs[i]);
+    }
+
     kobject_put(tmm_kobj);
 
     return rc;
@@ -420,9 +418,12 @@ err:
 
 static void __exit tmm_driver_exit(void)
 {
-    sysfs_remove_file(tmm_kobj, &memory_info_attr.attr);
-    sysfs_remove_file(tmm_kobj, &slab_info_attr.attr);
-    sysfs_remove_file(tmm_kobj, &buddy_info_attr.attr);
+    int i;
+
+    for (i = 0; tmm_attrs[i] != NULL; i++) {
+        sysfs_remove_file(tmm_kobj, tmm_attrs[i]);
+    }
+
     kobject_put(tmm_kobj);
     printk(KERN_INFO "tmm_driver_exit!\n");
 }
