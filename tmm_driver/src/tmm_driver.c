@@ -64,10 +64,8 @@ static kallsyms_lookup_name_t fn_kallsyms_lookup_name = NULL;
 typedef uint64_t (*tmi_mem_info_show_t)(uint64_t addr);
 static tmi_mem_info_show_t tmi_mem_info_show_func = NULL;
 
-typedef bool (*is_virtcca_cvm_enable_t)(void);
-static is_virtcca_cvm_enable_t is_virtcca_cvm_enable_func = NULL;
-
-static struct static_key_false *virtcca_cvm_is_available_ptr = NULL;
+typedef bool (*is_virtcca_available_t)(void);
+static is_virtcca_available_t is_virtcca_available_func = NULL;
 
 static struct kprobe kp_sym_lookup = {
     .symbol_name = "kallsyms_lookup_name",
@@ -100,15 +98,9 @@ static int get_symbol_from_kernel(void)
     	return -1;
     }
 
-    is_virtcca_cvm_enable_func = (is_virtcca_cvm_enable_t)fn_kallsyms_lookup_name("is_virtcca_cvm_enable");
-    if (!is_virtcca_cvm_enable_func) {
-        pr_err("tmm_driver: cannot get function is_virtcca_cvm_enable\n");
-        return -1;
-    }
-
-    virtcca_cvm_is_available_ptr = (struct static_key_false *)fn_kallsyms_lookup_name("virtcca_cvm_is_available");
-    if (!virtcca_cvm_is_available_ptr) {
-        pr_err("tmm_driver: cannot get key virtcca_cvm_is_available\n");
+    is_virtcca_available_func = (is_virtcca_available_t)fn_kallsyms_lookup_name("is_virtcca_available");
+    if (!is_virtcca_available_func) {
+        pr_err("tmm_driver: cannot get function is_virtcca_available\n");
         return -1;
     }
 
@@ -119,8 +111,7 @@ static ssize_t virtcca_enabled_show(struct kobject *kobj,
                                     struct kobj_attribute *attr,
                                     char *buf)
 {
-    return sysfs_emit(buf, "%d\n",
-        (static_key_enabled(virtcca_cvm_is_available_ptr) && is_virtcca_cvm_enable_func()));
+    return sysfs_emit(buf, "%d\n", is_virtcca_available_func());
 }
 
 static int get_tmm_memory_info(tmm_memory_info_s *memory_info)
