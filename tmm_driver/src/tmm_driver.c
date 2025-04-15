@@ -64,6 +64,9 @@ static kallsyms_lookup_name_t fn_kallsyms_lookup_name = NULL;
 typedef uint64_t (*tmi_mem_info_show_t)(uint64_t addr);
 static tmi_mem_info_show_t tmi_mem_info_show_func = NULL;
 
+typedef bool (*is_virtcca_available_t)(void);
+static is_virtcca_available_t is_virtcca_available_func = NULL;
+
 static struct kprobe kp_sym_lookup = {
     .symbol_name = "kallsyms_lookup_name",
 };
@@ -86,7 +89,7 @@ static int get_symbol_from_kernel(void)
     get_kallsyms_lookup_name();
     if (!fn_kallsyms_lookup_name) {
         pr_err("tmm_driver: cannot get function kallsyms_lookup_name\n");
-	return -1;
+        return -1;
     }
 
     tmi_mem_info_show_func = (tmi_mem_info_show_t)fn_kallsyms_lookup_name("tmi_mem_info_show");
@@ -95,7 +98,20 @@ static int get_symbol_from_kernel(void)
     	return -1;
     }
 
+    is_virtcca_available_func = (is_virtcca_available_t)fn_kallsyms_lookup_name("is_virtcca_available");
+    if (!is_virtcca_available_func) {
+        pr_err("tmm_driver: cannot get function is_virtcca_available\n");
+        return -1;
+    }
+
     return 0;
+}
+
+static ssize_t virtcca_enabled_show(struct kobject *kobj,
+                                    struct kobj_attribute *attr,
+                                    char *buf)
+{
+    return sysfs_emit(buf, "%d\n", is_virtcca_available_func());
 }
 
 static int get_tmm_memory_info(tmm_memory_info_s *memory_info)
@@ -370,14 +386,23 @@ static ssize_t buddy_info_show(struct kobject *kobj,
     return buddy_info_size;
 }
 
+static struct kobj_attribute virtcca_enabled_attr = __ATTR_RO(virtcca_enabled);
 static struct kobj_attribute memory_info_attr = __ATTR_RO(memory_info);
 static struct kobj_attribute slab_info_attr = __ATTR_RO(slab_info);
 static struct kobj_attribute buddy_info_attr = __ATTR_RO(buddy_info);
 static struct kobject *tmm_kobj;
 
+static struct attribute *tmm_attrs[] = {
+    &virtcca_enabled_attr.attr,
+    &memory_info_attr.attr,
+    &slab_info_attr.attr,
+    &buddy_info_attr.attr,
+    NULL,
+};
+
 static int __init tmm_driver_init(void)
 {
-    int rc;
+    int rc, i;
 
     tmm_kobj = kobject_create_and_add("tmm", kernel_kobj);
     if (tmm_kobj == NULL) {
@@ -385,22 +410,12 @@ static int __init tmm_driver_init(void)
         return -1;
     }
 
-    rc = sysfs_create_file(tmm_kobj, &memory_info_attr.attr);
-    if (rc) {
-        pr_err("tmm_driver: unable to create memory_info sysfs file (%d)\n", rc);
-        goto err;
-    }
-
-    rc = sysfs_create_file(tmm_kobj, &slab_info_attr.attr);
-    if (rc) {
-        pr_err("tmm_driver: unable to create slab_info sysfs file (%d)\n", rc);
-        goto err;
-    }
-
-    rc = sysfs_create_file(tmm_kobj, &buddy_info_attr.attr);
-    if (rc) {
-        pr_err("tmm_driver: unable to create buddy_info sysfs file (%d)\n", rc);
-        goto err;
+    for (i = 0; tmm_attrs[i] != NULL; i++) {
+        rc = sysfs_create_file(tmm_kobj, tmm_attrs[i]);
+        if (rc) {
+            pr_err("tmm_driver: unable to create sysfs file (%d)\n", rc);
+            goto err;
+        }
     }
 
     rc = get_symbol_from_kernel();
@@ -410,9 +425,10 @@ static int __init tmm_driver_init(void)
     return 0;
 
 err:
-    sysfs_remove_file(tmm_kobj, &memory_info_attr.attr);
-    sysfs_remove_file(tmm_kobj, &slab_info_attr.attr);
-    sysfs_remove_file(tmm_kobj, &buddy_info_attr.attr);
+    for (--i; i >= 0; i--) {
+        sysfs_remove_file(tmm_kobj, tmm_attrs[i]);
+    }
+
     kobject_put(tmm_kobj);
 
     return rc;
@@ -420,9 +436,12 @@ err:
 
 static void __exit tmm_driver_exit(void)
 {
-    sysfs_remove_file(tmm_kobj, &memory_info_attr.attr);
-    sysfs_remove_file(tmm_kobj, &slab_info_attr.attr);
-    sysfs_remove_file(tmm_kobj, &buddy_info_attr.attr);
+    int i;
+
+    for (i = 0; tmm_attrs[i] != NULL; i++) {
+        sysfs_remove_file(tmm_kobj, tmm_attrs[i]);
+    }
+
     kobject_put(tmm_kobj);
     printk(KERN_INFO "tmm_driver_exit!\n");
 }
