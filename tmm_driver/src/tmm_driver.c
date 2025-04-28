@@ -133,9 +133,12 @@ static int get_tmm_memory_info(tmm_memory_info_s *memory_info)
     return tmi_mem_info_show_func((uint64_t)memory_info);
 }
 
-static int get_tmm_info(tmm_info_option option, tmm_memory_info_s *tmm_info)
+static int get_tmm_info(tmm_info_option option, void *tmm_info)
 {
-    return tmi_tmm_info_show_func(option, (uint64_t)tmm_info);
+    if (!tmm_info)
+        return tmi_tmm_info_show_func(option, 0);
+    else
+        return tmi_tmm_info_show_func(option, __pa(tmm_info));
 }
 
 static ssize_t kae_vf_nums_show(struct kobject *kobj,
