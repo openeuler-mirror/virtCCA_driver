@@ -58,6 +58,11 @@ static const char *meta_data_strs[] = {
     "ttt"
 };
 
+typedef enum {
+    KAE_VF_INFO,
+    TMM_INFO_MAX
+}tmm_info_option;
+
 typedef unsigned long (*kallsyms_lookup_name_t)(const char *name);
 static kallsyms_lookup_name_t fn_kallsyms_lookup_name = NULL;
 
@@ -66,6 +71,9 @@ static tmi_mem_info_show_t tmi_mem_info_show_func = NULL;
 
 typedef bool (*is_virtcca_available_t)(void);
 static is_virtcca_available_t is_virtcca_available_func = NULL;
+
+typedef uint64_t (*tmi_tmm_info_show_t)(uint64_t option, uint64_t tmm_info_addr);
+static tmi_tmm_info_show_t tmi_tmm_info_show_func = NULL;
 
 static struct kprobe kp_sym_lookup = {
     .symbol_name = "kallsyms_lookup_name",
@@ -104,6 +112,12 @@ static int get_symbol_from_kernel(void)
         return -1;
     }
 
+    tmi_tmm_info_show_func = (tmi_tmm_info_show_t)fn_kallsyms_lookup_name("tmi_tmm_info_show");
+    if (!tmi_mem_info_show_func) {
+        pr_err("tmm_driver: cannot get function tmi_tmm_info_show\n");
+        return -1;
+    }
+
     return 0;
 }
 
@@ -117,6 +131,21 @@ static ssize_t virtcca_enabled_show(struct kobject *kobj,
 static int get_tmm_memory_info(tmm_memory_info_s *memory_info)
 {
     return tmi_mem_info_show_func((uint64_t)memory_info);
+}
+
+static int get_tmm_info(tmm_info_option option, tmm_memory_info_s *tmm_info)
+{
+    return tmi_tmm_info_show_func(option, (uint64_t)tmm_info);
+}
+
+static ssize_t kae_vf_nums_show(struct kobject *kobj,
+                                struct kobj_attribute *attr,
+                                char *buf)
+{
+    int ret;
+
+    ret = get_tmm_info(KAE_VF_INFO, NULL);
+    return sysfs_emit(buf, "%d\n", ret);
 }
 
 static uint64_t cal_numa_node_mem_info(tmm_memory_info_s *memory_info,
@@ -390,6 +419,7 @@ static struct kobj_attribute virtcca_enabled_attr = __ATTR_RO(virtcca_enabled);
 static struct kobj_attribute memory_info_attr = __ATTR_RO(memory_info);
 static struct kobj_attribute slab_info_attr = __ATTR_RO(slab_info);
 static struct kobj_attribute buddy_info_attr = __ATTR_RO(buddy_info);
+static struct kobj_attribute kae_vf_nums_attr = __ATTR_RO(kae_vf_nums);
 static struct kobject *tmm_kobj;
 
 static struct attribute *tmm_attrs[] = {
@@ -397,6 +427,7 @@ static struct attribute *tmm_attrs[] = {
     &memory_info_attr.attr,
     &slab_info_attr.attr,
     &buddy_info_attr.attr,
+    &kae_vf_nums_attr.attr,
     NULL,
 };
 
